@@ -17,7 +17,7 @@
     update.ps1 -Source F:\Updates    use release zips from a folder (USB stick,
                                      no internet needed) instead of GitHub
     update.ps1 -Rollback Research    undo the last update of a piece
-    (settings.json "source": "F:\Updates" makes a folder the default instead of GitHub)
+    (settings.json "source": "F:\\Updates" makes a folder the default instead of GitHub)
     -WaitPid n      wait for that program (the app that started us) to close
     -Restart file   start this again when done (the app's launcher)
     -SkipPostSteps  don't re-run a piece's setup after its dependencies changed
