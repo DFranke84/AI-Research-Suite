@@ -17,7 +17,9 @@
     update.ps1 -Source F:\Updates    use release zips from a folder (USB stick,
                                      no internet needed) instead of GitHub
     update.ps1 -Rollback Research    undo the last update of a piece
+    (settings.json "source": "F:\Updates" makes a folder the default instead of GitHub)
     -WaitPid n      wait for that program (the app that started us) to close
+    -Restart file   start this again when done (the app's launcher)
     -SkipPostSteps  don't re-run a piece's setup after its dependencies changed
     -Root path      the suite folder (default: the folder above this script)
 
@@ -32,6 +34,7 @@ param(
   [string]$Source = '',
   [string]$Rollback = '',
   [int]$WaitPid = 0,
+  [string]$Restart = '',
   [switch]$SkipPostSteps,
   [string]$Root = ''
 )
@@ -46,6 +49,11 @@ $Root = (Resolve-Path $Root).Path
 $suite = Get-Content (Join-Path $suiteDir 'suite.json') -Raw | ConvertFrom-Json
 $Only = @($Only -split ',' | Where-Object { $_ })
 $Install = @($Install -split ',' | Where-Object { $_ })
+# settings.json (written by the installer and the apps): weeklyCheck, lastCheck, and optionally
+# source - a folder of release zips to use instead of GitHub (an offline PC updated from a USB stick).
+$settings = $null
+try { $settings = Get-Content (Join-Path $suiteDir 'settings.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch { }
+if (-not $Source -and $settings -and $settings.source) { $Source = $settings.source }
 $backupRoot = Join-Path $suiteDir 'backups'
 $logDir = Join-Path $suiteDir 'logs'
 
@@ -77,6 +85,7 @@ function Get-Installed($c) {
 # Newest release of one component: from -Source (a folder of zips) or from GitHub.
 function Get-Latest($c) {
   if ($Source) {
+    if (-not (Test-Path $Source)) { throw "the update folder $Source is not there (USB stick not plugged in?)" }
     $best = $null
     Get-ChildItem -Path $Source -Filter "$($c.name)-*.zip" -File -ErrorAction SilentlyContinue | ForEach-Object {
       $v = $_.BaseName.Substring($c.name.Length + 1)
@@ -342,6 +351,12 @@ try {
   }
   Say ''
   if ($exit) { Say "Some updates failed - see above. Log: $log" 'Red' } else { Say 'All done.' 'Green' }
+  if ($Restart -and (Test-Path -LiteralPath $Restart)) {
+    Say "Starting $(Split-Path $Restart -Leaf) again..."
+    Start-Process -FilePath $Restart -WorkingDirectory (Split-Path $Restart)
+  }
+  # Opened by an app in its own window: keep it open if something went wrong so it can be read.
+  if ($exit -and $WaitPid) { Read-Host 'Press Enter to close' | Out-Null }
 } catch {
   Say "ERROR: $($_.Exception.Message)" 'Red'
   if ($Json) { [ordered]@{ error = $_.Exception.Message } | ConvertTo-Json }

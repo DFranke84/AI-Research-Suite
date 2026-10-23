@@ -3,3 +3,4 @@ dist/
 backups/
 logs/
 release-manifest.json
+settings.json
