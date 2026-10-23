@@ -1,0 +1,23 @@
+AI Research Suite - licences
+
+The apps (AIPortable, AIPortable-JustAI, Research library tools, Library Viewer and this
+installer) are free software under the MIT licence:
+https://github.com/DFranke84/AI-Research-Suite/blob/main/LICENSE
+
+Setup downloads other people's free software and content. Each keeps its own licence:
+
+- AI models (Ollama library and Hugging Face) - each model has its maker's licence
+  (for example Qwen: Apache 2.0 / Qwen licence, Llama: Llama Community Licence,
+  DeepSeek-R1: MIT, Mistral: Apache 2.0). Check a model's page before using it
+  commercially.
+- Ollama (MIT), Node.js (MIT), Electron (MIT), Kiwix kiwix-serve (GPL 3),
+  whisper.cpp (MIT), Python (PSF licence).
+- Wikipedia, Wikibooks, Stack Exchange, Appropedia, energypedia and WikEM archives:
+  Creative Commons BY-SA (keep the credit and the licence when you share them).
+- MedlinePlus: US government work (public domain); NHS Medicines: Open Government Licence.
+- iFixit guides: Creative Commons BY-NC-SA (not for commercial use).
+- Offline maps: (c) OpenStreetMap contributors (ODbL), via Protomaps.
+
+Nothing is sent anywhere about you or your computer. Setup and the apps only download
+what you pick here; the optional weekly update check only asks github.com which
+version is the newest.
