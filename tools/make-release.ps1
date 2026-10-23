@@ -81,13 +81,22 @@ $manifest = [ordered]@{
   built   = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
   files   = $files
 }
-$manifest | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $tree 'release-manifest.json') -Encoding UTF8
+# UTF-8 without a BOM, so the apps' JSON readers accept it too
+[IO.File]::WriteAllText((Join-Path $tree 'release-manifest.json'), ($manifest | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false))
 
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $zipName = "$name-$Version.zip"
 $zip = Join-Path $Out $zipName
 if (Test-Path $zip) { Remove-Item $zip -Force }
-[IO.Compression.ZipFile]::CreateFromDirectory($tree, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
+# Entries are added one by one so their names use '/' (CreateFromDirectory on
+# Windows PowerShell writes '\', which other unzip tools treat as part of the name).
+$za = [IO.Compression.ZipFile]::Open($zip, [IO.Compression.ZipArchiveMode]::Create)
+try {
+  Get-ChildItem $tree -Recurse -File | Sort-Object FullName | ForEach-Object {
+    $entry = $_.FullName.Substring($tree.Length + 1) -replace '\\', '/'
+    [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($za, $_.FullName, $entry, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+  }
+} finally { $za.Dispose() }
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
 Set-Content -Path "$zip.sha256" -Value "$hash  $zipName" -Encoding ASCII
 Remove-Item $work -Recurse -Force
