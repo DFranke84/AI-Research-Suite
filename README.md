@@ -14,11 +14,33 @@ All pieces sit side by side in one folder, with this one next to them:
 
 ```
 D:\AI-Research\
-  AI-Research-Suite\    <- this repo (updater, later the installer)
+  AI-Research-Suite\    <- this repo (installer helpers, updater)
   AIPortable-JustAI\
   Research\
   LibraryViewer\
 ```
+
+## Installing
+
+Download **Suite-Setup-&lt;version&gt;.exe** from the [latest release](https://github.com/DFranke84/AI-Research-Suite/releases/latest)
+and double-click it. No administrator rights are needed. Setup:
+
+1. checks the PC (Windows, memory, graphics card, free space, internet speed),
+2. asks which pieces you want (AIPortable **or** JustAI, the Research library, the Library Viewer)
+   and where to put them (it suggests the drive with the most room),
+3. lets you pick an AI model size up to your graphics card's memory, a model, voice input and
+   (AIPortable) offline map regions,
+4. lets you pick starter packs and an offline Wikipedia,
+5. shows the download size, the space needed and about how long it will take,
+6. then downloads and sets up everything in its own window. Close it any time and run Setup
+   again - it carries on where it stopped.
+
+Run Setup again later to **update and repair** (keeps your choices) or to **change your choices**.
+Uninstalling asks whether to remove the apps' program files too; your chats, models, maps and
+library are kept either way.
+
+Windows may show "Windows protected your PC" because the installer isn't code-signed yet - click
+**More info → Run anyway**.
 
 ## Updating
 
@@ -39,6 +61,12 @@ Folders that are git checkouts are left alone - update those with `git pull`.
 3. Create the GitHub release for that tag and attach both files.
 
 The zip is built from git, so only tracked files can be in it.
+
+The installer: `tools\build-installer.ps1` (needs Inno Setup 6) refreshes `installer\catalog.ini` from
+the apps' own catalogs (models, maps, starter packs) and writes `dist\Suite-Setup-<VERSION>.exe`;
+attach it to this repo's release. For an unattended test install:
+`Suite-Setup-<v>.exe /VERYSILENT /DIR=C:\AI-Test\Suite /SOURCE=<folder of release zips> /PLANFILE=<plan.ini>`
+(the plan.ini keys are listed at the top of `install.ps1`).
 
 ## Licence
 
