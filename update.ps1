@@ -112,9 +112,11 @@ function Get-Latest($c) {
 }
 
 function First-Line([string]$text) {
+  $text = "$text".Replace([string][char]0xFEFF, '')
   $line = ($text -split "`r?`n" | Where-Object { $_.Trim() -and $_ -notmatch '^\s*#' } | Select-Object -First 1)
   if (-not $line) { return '' }
-  $line = $line.Trim() -replace '^[-*]\s*', ''
+  # plain text: no list bullet, no **bold** / `code` markers
+  $line = ($line.Trim() -replace '^[-*]\s+', '') -replace '\*\*|__|`', ''
   if ($line.Length -gt 110) { $line = $line.Substring(0, 107) + '...' }
   return $line
 }

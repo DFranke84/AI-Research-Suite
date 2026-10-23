@@ -11,7 +11,7 @@
   voice=1/0, maps=key,key, packs=key,key (catalog.ini [packs] groups), wiki=none|nopic|maxi,
   background=1/0 (fetch Wikipedia in its own window after the rest), weekly=1/0, desktop=1/0
 #>
-param([string]$Plan = '', [string]$Source = '')
+param([string]$Plan = '', [string]$Source = '', [switch]$NoPause)   # -NoPause: nobody is watching (silent Setup)
 $ErrorActionPreference = 'Stop'
 $suiteDir = $PSScriptRoot
 $root = Split-Path $suiteDir -Parent
@@ -137,7 +137,7 @@ if (-not $failed -and $wikiLater) {
   Start-Process -FilePath (Join-Path $root 'Research\Get Archives.bat') -ArgumentList $wikiKey -WorkingDirectory (Join-Path $root 'Research')
 }
 Write-Host ''
-if ($failed) { Write-Host "Setup stopped: $failed`nLog: $log" -ForegroundColor Red; Read-Host 'Press Enter to close' | Out-Null }
+if ($failed) { Write-Host "Setup stopped: $failed`nLog: $log" -ForegroundColor Red; if (-not $NoPause) { Read-Host 'Press Enter to close' | Out-Null } }
 else { Write-Host 'All done.' -ForegroundColor Green }
 try { Stop-Transcript | Out-Null } catch { }
 exit $(if ($failed) { 1 } else { 0 })
