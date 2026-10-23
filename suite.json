@@ -1,0 +1,39 @@
+{
+  "_about": "The pieces of the AI Research Suite. Read by update.ps1 (and later the installer). Each component installs into <suite root>\\<name> and is published as GitHub releases of 'repo', each with an asset '<name>-<version>.zip' plus '<name>-<version>.zip.sha256' (built by tools\\make-release.ps1). postUpdate: after an update that changed any 'ifChanged' file, 'freshFolder' is set aside and 'run' is started with 'args' (a setup script that is safe to re-run).",
+  "components": [
+    {
+      "name": "AI-Research-Suite",
+      "title": "Suite tools (installer and updater)",
+      "repo": "DFranke84/AI-Research-Suite"
+    },
+    {
+      "name": "AIPortable",
+      "title": "AIPortable (full AI app)",
+      "repo": "DFranke84/AIPortable",
+      "postUpdate": [
+        { "ifChanged": ["package.json", "package-lock.json"], "freshFolder": "node_modules", "run": "scripts\\setup-windows.ps1", "args": ["-SkipModels", "-SkipMaps", "-NoLaunch"] }
+      ]
+    },
+    {
+      "name": "AIPortable-JustAI",
+      "title": "AIPortable-JustAI (slim AI app)",
+      "repo": "DFranke84/AIPortable-JustAI",
+      "postUpdate": [
+        { "ifChanged": ["package.json", "package-lock.json"], "freshFolder": "node_modules", "run": "scripts\\setup-windows.ps1", "args": ["-SkipModels", "-NoLaunch"] }
+      ]
+    },
+    {
+      "name": "Research",
+      "title": "Research library and Library Manager",
+      "repo": "DFranke84/Research",
+      "postUpdate": [
+        { "ifChanged": ["_scripts/requirements.txt", "_scripts/setup.ps1"], "run": "_scripts\\setup.ps1", "args": ["-Yes", "-NoShortcut"] }
+      ]
+    },
+    {
+      "name": "LibraryViewer",
+      "title": "Library Viewer (tablet)",
+      "repo": "DFranke84/LibraryViewer"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# Built release zips and the updater's working folders - never commit these
+dist/
+backups/
+logs/
+release-manifest.json
