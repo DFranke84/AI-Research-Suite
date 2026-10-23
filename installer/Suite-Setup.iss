@@ -740,17 +740,19 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
-var Suite, Plan, Given, Err: String; RC, Show: Integer;
+var Suite, Plan, Given, Err, Extra: String; RC, Show: Integer;
 begin
   if CurStep = ssPostInstall then begin
     Suite := ExpandConstant('{app}') + '\AI-Research-Suite';
     Plan := Suite + '\plan.ini';
     Given := ExpandConstant('{param:PLANFILE|}');
-    if Given <> '' then CopyFile(Given, Plan, False)
-    else begin DeleteFile(Plan); WritePlan(Plan); end;
+    if Given <> '' then begin
+      CopyFile(Given, Plan, False);
+      if ExpandConstant('{param:SOURCE|}') <> '' then SetIniString('plan', 'source', ExpandConstant('{param:SOURCE|}'), Plan);
+    end else begin DeleteFile(Plan); WritePlan(Plan); end;
     WizardForm.StatusLabel.Caption := 'Downloading and setting everything up - follow the progress in the AI Research Suite window. This can take a while.';
-    if WizardSilent then Show := SW_HIDE else Show := SW_SHOWNORMAL;
-    Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + Suite + '\install.ps1"', Suite, Show, ewWaitUntilTerminated, RC);
+    if WizardSilent then begin Show := SW_HIDE; Extra := ' -NoPause'; end else begin Show := SW_SHOWNORMAL; Extra := ''; end;
+    Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + Suite + '\install.ps1"' + Extra, Suite, Show, ewWaitUntilTerminated, RC);
     InstallSucceeded := GetIniString('state', 'result', '', Suite + '\install-state.ini') = 'ok';
     if not InstallSucceeded then begin
       Err := GetIniString('state', 'error', 'the setup window was closed before it finished', Suite + '\install-state.ini');
