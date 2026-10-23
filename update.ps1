@@ -22,6 +22,8 @@
     -Restart file   start this again when done (the app's launcher)
     -SkipPostSteps  don't re-run a piece's setup after its dependencies changed
     -Root path      the suite folder (default: the folder above this script)
+    -Remove         take the pieces' program files away (the uninstaller uses this);
+                    chats, models, maps, the library and notes stay where they are
 
   Folders that are git checkouts (they have .git) are left alone: use git pull.
 #>
@@ -36,6 +38,7 @@ param(
   [int]$WaitPid = 0,
   [string]$Restart = '',
   [switch]$SkipPostSteps,
+  [switch]$Remove,
   [string]$Root = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -276,6 +279,31 @@ function Undo-Update($c) {
   Say "  Done. If that version used different dependencies, run its setup again." 'Green'
 }
 
+# Program files only: what the release put there (release-manifest.json) and what its setup
+# downloaded (suite.json "runtime" folders). Everything else - data, models, the library - stays.
+function Remove-Component($c) {
+  $inst = Get-Installed $c
+  if (-not $inst.present -or -not $inst.manifest) { return }
+  if ($inst.git) { Say "  $($c.name): git checkout - left alone" 'Yellow'; return }
+  Say "Removing the $($c.title) program files" 'Cyan'
+  Wait-Closed $inst.folder $c.title
+  foreach ($rel in $inst.manifest.files.PSObject.Properties.Name) {
+    $p = Join-Path $inst.folder $rel
+    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
+  }
+  foreach ($rel in @($c.runtime)) {
+    if (-not $rel) { continue }
+    $p = Join-Path $inst.folder $rel
+    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force }
+  }
+  Remove-Item (Join-Path $inst.folder 'release-manifest.json') -Force
+  # empty folders left behind, deepest first; a folder that still holds data stays
+  Get-ChildItem $inst.folder -Recurse -Directory -ErrorAction SilentlyContinue | Sort-Object { $_.FullName.Length } -Descending |
+    Where-Object { -not (Get-ChildItem $_.FullName -Force -ErrorAction SilentlyContinue) } | ForEach-Object { Remove-Item $_.FullName -Force }
+  if (-not (Get-ChildItem $inst.folder -Force -ErrorAction SilentlyContinue)) { Remove-Item $inst.folder -Force; Say '  removed (nothing else was in it)' 'Green' }
+  else { Say "  done - your data is still in $($inst.folder)" 'Green' }
+}
+
 # ---------------------------------------------------------------- main
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir ("update-{0}.log" -f (Get-Date -Format 'yyyy-MM-dd'))
@@ -286,6 +314,14 @@ try {
     $c = $suite.components | Where-Object { $_.name -eq $Rollback }
     if (-not $c) { throw "Unknown piece '$Rollback' - see suite.json" }
     Undo-Update $c
+    return
+  }
+  if ($Remove) {
+    foreach ($c in $suite.components) {
+      if ($c.name -eq 'AI-Research-Suite') { continue }   # the uninstaller removes this folder itself
+      if ($Only.Count -and $Only -notcontains $c.name) { continue }
+      try { Remove-Component $c } catch { Say "  $($c.name): $($_.Exception.Message)" 'Red'; $exit = 1 }
+    }
     return
   }
 

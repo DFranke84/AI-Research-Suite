@@ -10,6 +10,7 @@
       "name": "AIPortable",
       "title": "AIPortable (full AI app)",
       "repo": "DFranke84/AIPortable",
+      "runtime": ["node_modules", "runtime", "src/renderer/vendor", "resources/ollama/win", "resources/kiwix/win", "resources/whisper/win"],
       "postUpdate": [
         { "ifChanged": ["package.json", "package-lock.json"], "freshFolder": "node_modules", "run": "scripts\\setup-windows.ps1", "args": ["-SkipModels", "-SkipMaps", "-NoLaunch"] }
       ]
@@ -18,6 +19,7 @@
       "name": "AIPortable-JustAI",
       "title": "AIPortable-JustAI (slim AI app)",
       "repo": "DFranke84/AIPortable-JustAI",
+      "runtime": ["node_modules", "runtime", "src/renderer/vendor", "resources/ollama/win", "resources/kiwix/win", "resources/whisper/win"],
       "postUpdate": [
         { "ifChanged": ["package.json", "package-lock.json"], "freshFolder": "node_modules", "run": "scripts\\setup-windows.ps1", "args": ["-SkipModels", "-NoLaunch"] }
       ]
@@ -26,6 +28,7 @@
       "name": "Research",
       "title": "Research library and Library Manager",
       "repo": "DFranke84/Research",
+      "runtime": ["_scripts/.venv", "_scripts/__pycache__"],
       "postUpdate": [
         { "ifChanged": ["_scripts/requirements.txt", "_scripts/setup.ps1"], "run": "_scripts\\setup.ps1", "args": ["-Yes", "-NoShortcut"] }
       ]
