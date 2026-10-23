@@ -22,6 +22,7 @@ DefaultDirName={code:DefaultRoot}
 AppendDefaultDirName=no
 DirExistsWarning=no
 UsePreviousAppDir=yes
+DisableWelcomePage=no
 DisableProgramGroupPage=yes
 DisableReadyPage=yes
 PrivilegesRequired=lowest
@@ -33,6 +34,9 @@ UninstallFilesDir={app}\AI-Research-Suite\uninstall
 UninstallDisplayName=AI Research Suite
 Compression=lzma2
 SolidCompression=yes
+
+[Messages]
+WelcomeLabel2=A private, offline AI assistant and a survival and how-to library that keep working without internet.%n%nSetup asks what you want, shows how much space and download time it needs, then downloads and sets up everything for you.%n%n  - AIPortable (full) or AIPortable-JustAI (slim) - the AI app%n  - Research library - your own offline library and the Library Manager%n  - Library Viewer - read the library on a tablet%n%nTour video: youtu.be/AcBpQHDESII
 
 [Files]
 Source: "..\update.ps1"; DestDir: "{app}\AI-Research-Suite"; Flags: ignoreversion
@@ -624,7 +628,11 @@ var KeepChoices: Boolean;
 begin
   Result := False;
   KeepChoices := Existing and (ModePage.SelectedValueIndex = 0);
-  if PageID = ModePage.ID then Result := not Existing;
+  if PageID = ModePage.ID then begin
+    { the folder field already holds the earlier install's folder (UsePreviousAppDir) }
+    Existing := FileExists(AddBackslash(WizardDirValue) + 'AI-Research-Suite\plan.ini');
+    Result := not Existing;
+  end;
   if KeepChoices and ((PageID = wpLicense) or (PageID = PiecesPage.ID) or (PageID = wpSelectDir) or
      (PageID = AIPage.ID) or (PageID = LibPage.ID)) then Result := True;
   if PageID = AIPage.ID then Result := Result or IsApp('none');
@@ -666,8 +674,6 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 var Dl, Disk: Integer; Lines, FS, G: String;
 begin
   Result := True;
-  if CurPageID = wpWelcome then
-    Existing := FileExists(AddBackslash(WizardDirValue) + 'AI-Research-Suite\plan.ini');
   if (CurPageID = ModePage.ID) and Existing then begin
     LoadPlan(AddBackslash(WizardDirValue) + 'AI-Research-Suite\plan.ini');
     if ModePage.SelectedValueIndex = 2 then begin
