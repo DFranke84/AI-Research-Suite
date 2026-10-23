@@ -176,21 +176,23 @@ function Update-Component($c, $inst, $latest) {
 
     if ($inst.present) { Wait-Closed $folder $title }
 
-    # Back up everything that will be replaced or removed.
-    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $oldLabel = $(if ($inst.version) { $inst.version } else { 'none' })
-    $bak = Join-Path $backupRoot "$($c.name)-$stamp-from-$oldLabel"
-    New-Item -ItemType Directory -Force -Path (Join-Path $bak 'files') | Out-Null
-    foreach ($rel in @($toCopy | Where-Object { -not $added.Contains($_) }) + $toRemove) {
-      $src = Join-Path $folder $rel
-      $dst = Join-Path (Join-Path $bak 'files') $rel
-      New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
-      Copy-Item -LiteralPath $src -Destination $dst -Force
-    }
+    # Back up everything that will be replaced or removed (a fresh install has nothing to save).
     $mf = Join-Path $folder 'release-manifest.json'
-    if (Test-Path $mf) { Copy-Item $mf (Join-Path $bak 'release-manifest.json') }
-    Set-Content -Path (Join-Path $bak 'added.txt') -Value ($added -join "`r`n") -Encoding UTF8
-    Set-Content -Path (Join-Path $bak 'info.txt') -Encoding UTF8 -Value "$($c.name): $oldLabel -> $($latest.version) on $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+    if ($inst.present) {
+      $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+      $oldLabel = $(if ($inst.version) { $inst.version } else { 'unknown' })
+      $bak = Join-Path $backupRoot "$($c.name)-$stamp-from-$oldLabel"
+      New-Item -ItemType Directory -Force -Path (Join-Path $bak 'files') | Out-Null
+      foreach ($rel in @($toCopy | Where-Object { -not $added.Contains($_) }) + $toRemove) {
+        $src = Join-Path $folder $rel
+        $dst = Join-Path (Join-Path $bak 'files') $rel
+        New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+        Copy-Item -LiteralPath $src -Destination $dst -Force
+      }
+      if (Test-Path $mf) { Copy-Item $mf (Join-Path $bak 'release-manifest.json') }
+      Set-Content -Path (Join-Path $bak 'added.txt') -Value ($added -join "`r`n") -Encoding UTF8
+      Set-Content -Path (Join-Path $bak 'info.txt') -Encoding UTF8 -Value "$($c.name): $oldLabel -> $($latest.version) on $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+    }
 
     # Apply.
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
