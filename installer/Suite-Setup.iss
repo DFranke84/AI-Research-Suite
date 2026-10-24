@@ -87,11 +87,16 @@ var
   VramGB, RamGB, SpeedMbps: Integer;
   GpuName, WinName: String;
   OllamaRunning, Probed, Existing, InstallSucceeded: Boolean;
+  AmdGpu, HaveBrowser, HaveAntiword: Boolean;
+  ChkGit, ChkChrome: TNewCheckBox;
   TierIds: array[0..4] of Integer;
   TierCount: Integer;
 
   ModePage: TInputOptionWizardPage;
-  PCPage, PiecesPage, AIPage, LibPage, SummaryPage: TWizardPage;
+  PCPage, PiecesPage, AIPage, LibPage, ArchPage, SummaryPage: TWizardPage;
+  ArchList: TNewCheckListBox;
+  ArchRow: array of Integer;   { ArchList line -> catalog archive number (0 = a category heading) }
+  WikiNote, ArchWhere: TNewStaticText;
   PCValues: array[0..5] of TNewStaticText;
   SpeedCombo: TNewComboBox;
   RadFull, RadSlim, RadNone: TNewRadioButton;
@@ -109,6 +114,14 @@ var
   SumTotals, SumWarn: TNewStaticText;
   RadNow, RadLater: TNewRadioButton;
   ChkDesktop, ChkWeekly: TNewCheckBox;
+  LocalPage: TWizardPage;
+  ChkLocal, ChkLocalMap: TNewCheckBox;
+  PlaceEdit: TNewEdit;
+  FindBtn: TNewButton;
+  PlaceCombo, KmCombo, PerCombo, TopoCombo: TNewComboBox;
+  PlaceNote, LocalEst, TopoLabel: TNewStaticText;
+  PlaceLat, PlaceLon, PlaceCC: array[0..4] of String;
+  PlaceCount: Integer;
 
 function GetDriveType(lpRootPathName: String): Cardinal; external 'GetDriveTypeW@kernel32.dll stdcall';
 
@@ -215,6 +228,33 @@ begin
   Result := Cat('tier' + IntToStr(Tier), 'm' + IntToStr(Idx + 1));
 end;
 
+function PackGroupChecked(G: String): Boolean;
+var I: Integer; L: String;
+begin
+  Result := False;
+  L := Cat('packs', 'list') + ',';
+  for I := 0 to PacksList.Items.Count - 1 do begin
+    if Copy(L, 1, Pos(',', L) - 1) = G then begin Result := HasResearch and PacksList.Checked[I]; exit; end;
+    L := Copy(L, Pos(',', L) + 1, Length(L));
+  end;
+end;
+
+{ the starter-pack group that downloads this archive anyway ('' = none ticked) }
+function ArchiveComesWith(ArchiveKey: String): String;
+var L, G: String;
+begin
+  Result := '';
+  if ArchiveKey = '' then exit;
+  L := Cat('packs', 'list') + ',';
+  while Pos(',', L) > 0 do begin
+    G := Copy(L, 1, Pos(',', L) - 1);
+    L := Copy(L, Pos(',', L) + 1, Length(L));
+    if (Pos(',' + ArchiveKey + ',', ',' + Cat('pack-' + G, 'archives') + ',') > 0) and PackGroupChecked(G) then begin
+      Result := Cat('pack-' + G, 'title'); exit;
+    end;
+  end;
+end;
+
 function WikiChoice: String;
 begin
   if WikiRadios[1].Checked then Result := 'nopic'
@@ -249,6 +289,9 @@ begin
   GpuName := GetIniString('pc', 'gpu', 'unknown', ProbeIni);
   VramGB := GetIniInt('pc', 'vramGB', 0, 0, 0, ProbeIni);
   OllamaRunning := GetIniInt('pc', 'ollamaRunning', 0, 0, 0, ProbeIni) = 1;
+  AmdGpu := GetIniInt('pc', 'amd', 0, 0, 0, ProbeIni) = 1;
+  HaveBrowser := GetIniInt('pc', 'browser', 1, 0, 0, ProbeIni) = 1;
+  HaveAntiword := GetIniInt('pc', 'antiword', 1, 0, 0, ProbeIni) = 1;
   Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\probe.ps1') + '" -Speed -Out "' + ExpandConstant('{tmp}\speed.ini') + '"',
        '', SW_HIDE, ewWaitUntilTerminated, RC);
   SpeedMbps := GetIniInt('net', 'mbps', 0, 0, 0, ExpandConstant('{tmp}\speed.ini'));
@@ -288,6 +331,7 @@ begin
     PCValues[2].Caption := GpuName + ' - ' + IntToStr(VramGB) + ' GB  (you can pick any AI model size up to ' + IntToStr(VramGB) + ' GB)'
   else
     PCValues[2].Caption := GpuName + ' - memory not detected (small models are the safe choice)';
+  if AmdGpu then PCValues[2].Caption := PCValues[2].Caption + ' - AMD card: Ollama''s AMD add-on is installed too';
   PCValues[3].Caption := DrivesText;
   PCValues[4].Caption := IntToStr(SpeedMbps) + ' Mbps (quick test) - used for the time estimates';
   if OllamaRunning then
@@ -352,6 +396,129 @@ begin
 end;
 
 { ---------------------------------------------------------------- sizes }
+{ ---------------------------------------------------------------- Offline archives }
+procedure UpdateArchives(Sender: TObject);
+var I: Integer; E, Pack: String;
+begin
+  if HasResearch then begin
+    WikiNote.Caption := 'It also speeds up the Wikipedia articles pack and Local Area: they read their articles from it instead of ' +
+      'wikipedia.org (so it is downloaded first).';
+    ArchWhere.Caption := 'Saved in Research\_sources\zim - the AI apps read them there. Skip any now? Add them later with Get Archives.bat';
+    if IsApp('full') then ArchWhere.Caption := ArchWhere.Caption + ' or AIPortable''s Wikipedia tab.' else ArchWhere.Caption := ArchWhere.Caption + '.';
+  end else begin
+    WikiNote.Caption := 'Read it in AIPortable''s Wikipedia tab; the AI can search it while it answers.';
+    ArchWhere.Caption := 'Saved in AIPortable\data\wikipedia. Skip any now? Add them later in AIPortable''s Wikipedia tab.';
+  end;
+  { archives a ticked starter pack downloads anyway: shown ticked and greyed }
+  for I := 0 to ArchList.Items.Count - 1 do
+    if ArchRow[I] > 0 then begin
+      E := Cat('archives', 'a' + IntToStr(ArchRow[I]));
+      Pack := ArchiveComesWith(Field(E, 6));
+      ArchList.ItemEnabled[I] := Pack = '';
+      if Pack <> '' then begin
+        ArchList.Checked[I] := True;
+        ArchList.ItemSubItem[I] := 'with ' + Pack;
+      end else
+        ArchList.ItemSubItem[I] := SizeText(StrToIntDef(Field(E, 3), 0));
+    end;
+end;
+
+{ ---------------------------------------------------------------- Your local area (Build Local Area) }
+function ComboNumText(S: String): String;
+begin
+  if Pos(' ', S) > 0 then S := Copy(S, 1, Pos(' ', S) - 1);
+  if S = 'none' then S := '0';
+  Result := S;
+end;
+
+function ComboNum(C: TNewComboBox): Integer;
+begin
+  Result := StrToIntDef(ComboNumText(C.Text), 0);
+end;
+
+function LocalOn: Boolean;
+begin
+  Result := HasResearch and ChkLocal.Checked and (PlaceCount > 0) and (PlaceCombo.ItemIndex >= 0);
+end;
+
+function PlaceIsUS: Boolean;
+begin
+  Result := (PlaceCount > 0) and (PlaceCombo.ItemIndex >= 0) and (PlaceCC[PlaceCombo.ItemIndex] = 'us');
+end;
+
+{ USGS 7.5-minute maps are about 13 x 14 km and about 50 MB each }
+function TopoCount: Integer;
+var K: Integer;
+begin
+  K := ComboNum(TopoCombo);
+  if (K <= 0) or not PlaceIsUS then Result := 0
+  else Result := ((2 * K + 12) div 13) * ((2 * K + 13) div 14);
+end;
+
+{ 11 groups (flowering plants, conifers, grasses, ferns, birds, mammals, fish, reptiles, insects, spiders,
+  fungi); a page with its photos is roughly 2.5 MB. Quiet areas have fewer species than asked for. }
+function SpeciesMB: Integer;
+begin
+  Result := 11 * ComboNum(PerCombo) * 25 div 10;
+end;
+
+{ street detail for the square around the place: about 1.5 MB per 1,000 square km }
+function AreaMapMB: Integer;
+var R: Integer;
+begin
+  R := ComboNum(KmCombo);
+  Result := (2 * R) * (2 * R) * 15 div 10000;
+  if Result < 5 then Result := 5;
+end;
+
+procedure UpdateLocal(Sender: TObject);
+var On, Found: Boolean; Mins: Integer; T: String;
+begin
+  On := ChkLocal.Checked;
+  Found := (PlaceCount > 0) and (PlaceCombo.ItemIndex >= 0);
+  PlaceEdit.Enabled := On; FindBtn.Enabled := On; PlaceCombo.Enabled := On and Found;
+  KmCombo.Enabled := On; PerCombo.Enabled := On;
+  TopoCombo.Enabled := On and PlaceIsUS; TopoLabel.Enabled := TopoCombo.Enabled;
+  ChkLocalMap.Visible := IsApp('full'); ChkLocalMap.Enabled := On;
+  if not On then begin LocalEst.Caption := ''; exit; end;
+  if not Found then begin LocalEst.Caption := 'Type where you live and click Find.'; exit; end;
+  Mins := 11 * ComboNum(PerCombo) * 4 div 60;
+  T := 'About ' + SizeText(SpeciesMB) + ' of species pages (about ' + IntToStr(Mins) + ' min to build - iNaturalist is asked one species at a time)';
+  if TopoCount > 0 then T := T + ', ' + IntToStr(TopoCount) + ' topo maps (about ' + SizeText(TopoCount * 50) + ')';
+  if IsApp('full') and ChkLocalMap.Checked then T := T + ', a ' + SizeText(AreaMapMB) + ' street map';
+  LocalEst.Caption := T + '.';
+end;
+
+procedure FindClick(Sender: TObject);
+var RC, I: Integer; F, Row, Q: String;
+begin
+  Q := Trim(PlaceEdit.Text);
+  StringChangeEx(Q, '"', '', True);
+  if Q = '' then exit;
+  FindBtn.Enabled := False;
+  PlaceNote.Caption := 'Looking it up...';
+  WizardForm.Repaint;
+  if not FileExists(ExpandConstant('{tmp}\probe.ps1')) then ExtractTemporaryFile('probe.ps1');
+  F := ExpandConstant('{tmp}\place.ini');
+  DeleteFile(F);
+  Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\probe.ps1') + '" -Out "' + F + '" -Place "' + Q + '"',
+       '', SW_HIDE, ewWaitUntilTerminated, RC);
+  PlaceCount := GetIniInt('places', 'count', 0, 0, 5, F);
+  PlaceCombo.Items.Clear;
+  for I := 1 to PlaceCount do begin
+    Row := GetIniString('places', 'p' + IntToStr(I), '', F);
+    PlaceCombo.Items.Add(Field(Row, 1));
+    PlaceLat[I - 1] := Field(Row, 2); PlaceLon[I - 1] := Field(Row, 3); PlaceCC[I - 1] := Field(Row, 4);
+  end;
+  if PlaceCount > 0 then begin
+    PlaceCombo.ItemIndex := 0;
+    if PlaceCount > 1 then PlaceNote.Caption := IntToStr(PlaceCount) + ' places found - pick yours in the list.' + ' Only the place search (OpenStreetMap), iNaturalist and USGS see it; it is kept in your library, nowhere else.'
+    else PlaceNote.Caption := 'Found it.' + ' Only the place search (OpenStreetMap), iNaturalist and USGS see it; it is kept in your library, nowhere else.';
+  end else
+    PlaceNote.Caption := 'Not found (or no internet) - try a town with its state or country, or a position like 35.59, -82.55.';
+  UpdateLocal(nil);
+end;
+
 procedure AddRow(var Lines: String; var DlMB, DiskMB: Integer; Name: String; Dl, Disk: Integer);
 var Pad: String;
 begin
@@ -397,8 +564,22 @@ begin
     if PacksN > 0 then begin
       AddRow(Lines, DlMB, DiskMB, 'Starter packs (' + IntToStr(PacksN) + ')', PacksMB, PacksMB + PacksMB * CatInt('base', 'pagesPercent') div 100);
     end;
+  end;
+  if HasResearch or IsApp('full') then begin
     if WikiChoice = 'nopic' then AddRow(Lines, DlMB, DiskMB, 'Wikipedia (text, no pictures)', CatInt('wiki', 'nopicMB'), CatInt('wiki', 'nopicMB'));
     if WikiChoice = 'maxi' then AddRow(Lines, DlMB, DiskMB, 'Wikipedia (with pictures)', CatInt('wiki', 'maxiMB'), CatInt('wiki', 'maxiMB'));
+    M := 0; PacksN := 0;
+    for I := 0 to ArchList.Items.Count - 1 do
+      if (ArchRow[I] > 0) and ArchList.Checked[I] and ArchList.ItemEnabled[I] then begin
+        M := M + StrToIntDef(Field(Cat('archives', 'a' + IntToStr(ArchRow[I])), 3), 0);
+        PacksN := PacksN + 1;
+      end;
+    if PacksN > 0 then AddRow(Lines, DlMB, DiskMB, 'More archives (' + IntToStr(PacksN) + ')', M, M);
+  end;
+  if LocalOn then begin
+    AddRow(Lines, DlMB, DiskMB, 'Local Area: species pages', SpeciesMB, SpeciesMB);
+    if TopoCount > 0 then AddRow(Lines, DlMB, DiskMB, 'Local Area: ' + IntToStr(TopoCount) + ' topo maps', TopoCount * 50, TopoCount * 50);
+    if IsApp('full') and ChkLocalMap.Checked then AddRow(Lines, DlMB, DiskMB, 'Street map of your area', AreaMapMB, AreaMapMB);
   end;
   if ChkViewer.Checked then AddRow(Lines, DlMB, DiskMB, 'Library Viewer + tablet data', CatInt('base', 'viewerDlMB'), CatInt('base', 'viewerDiskMB'));
 end;
@@ -422,7 +603,7 @@ begin
   if (Free >= 0) and (Free < Disk) then Warn := 'Not enough space: ' + ExtractFileDrive(WizardDirValue) + ' has ' + SizeText(Free) + ' free. Go back and pick another folder or fewer items.'
   else if Free >= 0 then Warn := SizeText(Free - Disk) + ' will be left free afterwards (sizes are estimates).';
   SumWarn.Caption := Warn;
-  RadLater.Enabled := WikiChoice <> 'none';
+  RadLater.Enabled := (WikiChoice <> 'none') and HasResearch and not PackGroupChecked('wiki') and not LocalOn;
   if not RadLater.Enabled then RadNow.Checked := True;
 end;
 
@@ -452,6 +633,23 @@ begin
   PlanModel := GetIniString('plan', 'model', '', F);
   RadLater.Checked := GetIniString('plan', 'background', '0', F) = '1';
   RadNow.Checked := not RadLater.Checked;
+  S := ',' + GetIniString('plan', 'archives', '', F) + ',';
+  for I := 0 to ArchList.Items.Count - 1 do
+    if ArchRow[I] > 0 then ArchList.Checked[I] := Pos(',' + Field(Cat('archives', 'a' + IntToStr(ArchRow[I])), 1) + ',', S) > 0;
+  ChkGit.Checked := Pos('git', GetIniString('plan', 'tools', '', F)) > 0;
+  ChkChrome.Checked := Pos('chrome', GetIniString('plan', 'tools', '', F)) > 0;
+  if GetIniString('plan', 'local', '0', F) = '1' then begin
+    ChkLocal.Checked := True;
+    PlaceCount := 1;
+    PlaceCombo.Items.Clear; PlaceCombo.Items.Add(GetIniString('plan', 'localName', '', F)); PlaceCombo.ItemIndex := 0;
+    PlaceLat[0] := GetIniString('plan', 'localLat', '', F); PlaceLon[0] := GetIniString('plan', 'localLon', '', F);
+    PlaceCC[0] := GetIniString('plan', 'localCountry', '', F);
+    PlaceEdit.Text := PlaceCombo.Text;
+    for I := 0 to KmCombo.Items.Count - 1 do if ComboNumText(KmCombo.Items[I]) = GetIniString('plan', 'localKm', '', F) then KmCombo.ItemIndex := I;
+    for I := 0 to PerCombo.Items.Count - 1 do if ComboNumText(PerCombo.Items[I]) = GetIniString('plan', 'localPerGroup', '', F) then PerCombo.ItemIndex := I;
+    for I := 0 to TopoCombo.Items.Count - 1 do if ComboNumText(TopoCombo.Items[I]) = GetIniString('plan', 'localTopoKm', '', F) then TopoCombo.ItemIndex := I;
+    ChkLocalMap.Checked := GetIniString('plan', 'localMap', '0', F) = '1';
+  end;
 end;
 
 { ---------------------------------------------------------------- building the pages }
@@ -583,14 +781,17 @@ begin
   N := CatInt('maps', 'count');
   for I := 1 to N do begin
     E := Cat('maps', 'm' + IntToStr(I));
-    MapsList.AddCheckBox(Field(E, 2), SizeText(StrToIntDef(Field(E, 3), 0)), 0, False, True, False, True, nil);
+    if StrToIntDef(Field(E, 3), 0) > 10000 then
+      MapsList.AddCheckBox(Field(E, 2) + ' - takes hours; restarts if interrupted', SizeText(StrToIntDef(Field(E, 3), 0)), 0, False, True, False, True, nil)
+    else
+      MapsList.AddCheckBox(Field(E, 2), SizeText(StrToIntDef(Field(E, 3), 0)), 0, False, True, False, True, nil);
   end;
 
   { -- Library content }
   LibPage := CreateCustomPage(AIPage.ID, 'Fill your library', 'Starter packs are hand-picked pages from free archives. Setup downloads each archive and builds the pages.');
   PacksList := TNewCheckListBox.Create(LibPage);
   PacksList.Parent := LibPage.Surface;
-  PacksList.Top := 0; PacksList.Width := LibPage.SurfaceWidth; PacksList.Height := ScaleY(160);
+  PacksList.Top := 0; PacksList.Width := LibPage.SurfaceWidth; PacksList.Height := ScaleY(172);
   L := Cat('packs', 'list') + ',';
   while Pos(',', L) > 0 do begin
     G := Copy(L, 1, Pos(',', L) - 1);
@@ -598,20 +799,97 @@ begin
     PacksList.AddCheckBox(Cat('pack-' + G, 'title') + ' - ' + Cat('pack-' + G, 'desc') + ' (' + Cat('pack-' + G, 'items') + ' items)',
       SizeText(CatInt('pack-' + G, 'mb')), 0, (G <> 'books') and (G <> 'se'), True, False, True, nil);
   end;
-  MakeLabel(LibPage, 'Offline Wikipedia - readable in the apps and searchable by the AI', ScaleY(170), True);
+  Lbl := MakeLabel(LibPage, 'Every page is a full article. Each pack downloads its source archive and keeps it, so the AI can search it too. ' +
+    'None are required - add packs later with Build Starter Library.bat in the Research folder.', ScaleY(178), False);
+  Lbl.AutoSize := False; Lbl.WordWrap := True; Lbl.Width := LibPage.SurfaceWidth; Lbl.Height := ScaleY(30);
+  { optional library tools - only offered when this PC doesn't have them (see probe.ps1) }
+  ChkGit := TNewCheckBox.Create(LibPage); ChkGit.Parent := LibPage.Surface;
+  ChkGit.Caption := 'Also read old Word .doc files - installs Git for Windows, which includes antiword (about 300 MB)';
+  ChkGit.Top := ScaleY(214); ChkGit.Width := LibPage.SurfaceWidth; ChkGit.Visible := False;
+  ChkChrome := TNewCheckBox.Create(LibPage); ChkChrome.Parent := LibPage.Surface;
+  ChkChrome.Caption := 'Install Google Chrome - makes the clean one-page recipe PDFs (this PC has no Chrome or Edge)';
+  ChkChrome.Top := ScaleY(236); ChkChrome.Width := LibPage.SurfaceWidth; ChkChrome.Visible := False;
+
+  { -- Offline archives }
+  ArchPage := CreateCustomPage(LibPage.ID, 'Offline archives',
+    'Whole websites saved as one file each - readable in the apps and searchable by the AI. Download as much or as little as you like.');
+  MakeLabel(ArchPage, 'English Wikipedia - complete articles', 0, True);
   for I := 0 to 2 do begin
-    WikiRadios[I] := TNewRadioButton.Create(LibPage);
-    WikiRadios[I].Parent := LibPage.Surface;
-    WikiRadios[I].Top := ScaleY(190 + I * 22);
-    WikiRadios[I].Width := LibPage.SurfaceWidth;
+    WikiRadios[I] := TNewRadioButton.Create(ArchPage);
+    WikiRadios[I].Parent := ArchPage.Surface;
+    WikiRadios[I].Top := ScaleY(17 + I * 18);
+    WikiRadios[I].Width := ArchPage.SurfaceWidth;
   end;
-  WikiRadios[0].Caption := 'None for now (you can add one later with Get Archives)';
+  WikiRadios[0].Caption := 'Not now';
   WikiRadios[1].Caption := 'Full text, no pictures - ' + SizeText(CatInt('wiki', 'nopicMB'));
-  WikiRadios[2].Caption := 'Complete, with pictures - ' + SizeText(CatInt('wiki', 'maxiMB')) + ' (one very large file, needs NTFS)';
+  WikiRadios[2].Caption := 'Full text with pictures - ' + SizeText(CatInt('wiki', 'maxiMB')) + ' (one very large file, needs NTFS)';
   WikiRadios[0].Checked := True;
+  WikiNote := MakeLabel(ArchPage, '', ScaleY(72), False);
+  WikiNote.AutoSize := False; WikiNote.WordWrap := True; WikiNote.Width := ArchPage.SurfaceWidth; WikiNote.Height := ScaleY(30);
+  MakeLabel(ArchPage, 'More archives', ScaleY(108), True);
+  ArchList := TNewCheckListBox.Create(ArchPage);
+  ArchList.Parent := ArchPage.Surface;
+  ArchList.Top := ScaleY(126); ArchList.Width := ArchPage.SurfaceWidth; ArchList.Height := ScaleY(112);
+  ArchList.OnClickCheck := @UpdateArchives;
+  N := CatInt('archives', 'count');
+  G := '';
+  for I := 1 to N do begin
+    E := Cat('archives', 'a' + IntToStr(I));
+    if Field(E, 4) <> G then begin
+      G := Field(E, 4);
+      ArchList.AddGroup(G, '', 0, nil);
+      SetArrayLength(ArchRow, ArchList.Items.Count); ArchRow[ArchList.Items.Count - 1] := 0;
+    end;
+    ArchList.AddCheckBox(Field(E, 2), SizeText(StrToIntDef(Field(E, 3), 0)), 1, False, True, False, True, nil);
+    SetArrayLength(ArchRow, ArchList.Items.Count); ArchRow[ArchList.Items.Count - 1] := I;
+  end;
+  ArchWhere := MakeLabel(ArchPage, '', ScaleY(242), False);
+  ArchWhere.AutoSize := False; ArchWhere.WordWrap := True; ArchWhere.Width := ArchPage.SurfaceWidth; ArchWhere.Height := ScaleY(34);
+  ArchWhere.Font.Color := clGrayText;
+  for I := 0 to 2 do WikiRadios[I].OnClick := @UpdateArchives;   { only now: ticking a radio runs it }
 
   { -- Summary }
-  SummaryPage := CreateCustomPage(LibPage.ID, 'Ready to install', 'Check the sizes and times, then click Install.');
+  { -- Your local area }
+  LocalPage := CreateCustomPage(ArchPage.ID, 'Your local area',
+    'Pages about the plants, wildlife and fungi seen near you, your weather, and maps - built from iNaturalist and USGS.');
+  ChkLocal := TNewCheckBox.Create(LocalPage); ChkLocal.Parent := LocalPage.Surface;
+  ChkLocal.Caption := 'Build a Local Area for where I live';
+  ChkLocal.Top := 0; ChkLocal.Width := LocalPage.SurfaceWidth; ChkLocal.OnClick := @UpdateLocal;
+  Lbl := MakeLabel(LocalPage, 'Where do you live? A town, an address, or a position like 35.59, -82.55', ScaleY(26), False);
+  PlaceEdit := TNewEdit.Create(LocalPage); PlaceEdit.Parent := LocalPage.Surface;
+  PlaceEdit.Top := ScaleY(44); PlaceEdit.Width := LocalPage.SurfaceWidth - ScaleX(90);
+  FindBtn := TNewButton.Create(LocalPage); FindBtn.Parent := LocalPage.Surface;
+  FindBtn.Caption := 'Find'; FindBtn.Top := ScaleY(43); FindBtn.Left := LocalPage.SurfaceWidth - ScaleX(80);
+  FindBtn.Width := ScaleX(80); FindBtn.Height := ScaleY(23); FindBtn.OnClick := @FindClick;
+  PlaceCombo := TNewComboBox.Create(LocalPage); PlaceCombo.Parent := LocalPage.Surface;
+  PlaceCombo.Style := csDropDownList; PlaceCombo.Top := ScaleY(72); PlaceCombo.Width := LocalPage.SurfaceWidth;
+  PlaceCombo.OnChange := @UpdateLocal;
+  PlaceNote := MakeLabel(LocalPage, 'Only the place search (OpenStreetMap), iNaturalist and USGS see it; it is kept in your library, nowhere else.', ScaleY(98), False);
+  PlaceNote.AutoSize := False; PlaceNote.WordWrap := True; PlaceNote.Width := LocalPage.SurfaceWidth; PlaceNote.Height := ScaleY(28);
+  PlaceNote.Font.Color := clGrayText;
+  MakeLabel(LocalPage, 'How far around it', ScaleY(134), False);
+  KmCombo := TNewComboBox.Create(LocalPage); KmCombo.Parent := LocalPage.Surface; KmCombo.Style := csDropDownList;
+  KmCombo.Top := ScaleY(131); KmCombo.Left := ScaleX(200); KmCombo.Width := ScaleX(200);
+  KmCombo.Items.Add('25 km (16 miles)'); KmCombo.Items.Add('50 km (31 miles)'); KmCombo.Items.Add('100 km (62 miles)'); KmCombo.Items.Add('200 km (124 miles)');
+  KmCombo.ItemIndex := 1; KmCombo.OnChange := @UpdateLocal;
+  MakeLabel(LocalPage, 'Species per group (11 groups)', ScaleY(162), False);
+  PerCombo := TNewComboBox.Create(LocalPage); PerCombo.Parent := LocalPage.Surface; PerCombo.Style := csDropDownList;
+  PerCombo.Top := ScaleY(159); PerCombo.Left := ScaleX(200); PerCombo.Width := ScaleX(200);
+  PerCombo.Items.Add('25 - the most often seen'); PerCombo.Items.Add('50'); PerCombo.Items.Add('100'); PerCombo.Items.Add('200 - very thorough');
+  PerCombo.ItemIndex := 2; PerCombo.OnChange := @UpdateLocal;
+  TopoLabel := MakeLabel(LocalPage, 'USGS topo maps (US only)', ScaleY(190), False);
+  TopoCombo := TNewComboBox.Create(LocalPage); TopoCombo.Parent := LocalPage.Surface; TopoCombo.Style := csDropDownList;
+  TopoCombo.Top := ScaleY(187); TopoCombo.Left := ScaleX(200); TopoCombo.Width := ScaleX(200);
+  TopoCombo.Items.Add('none'); TopoCombo.Items.Add('5 km around you'); TopoCombo.Items.Add('15 km around you'); TopoCombo.Items.Add('30 km around you');
+  TopoCombo.ItemIndex := 2; TopoCombo.OnChange := @UpdateLocal;
+  ChkLocalMap := TNewCheckBox.Create(LocalPage); ChkLocalMap.Parent := LocalPage.Surface;
+  ChkLocalMap.Caption := 'Add a street map of this area to AIPortable''s offline maps';
+  ChkLocalMap.Top := ScaleY(216); ChkLocalMap.Width := LocalPage.SurfaceWidth; ChkLocalMap.Checked := True; ChkLocalMap.OnClick := @UpdateLocal;
+  LocalEst := MakeLabel(LocalPage, '', ScaleY(242), False);
+  LocalEst.AutoSize := False; LocalEst.WordWrap := True; LocalEst.Width := LocalPage.SurfaceWidth; LocalEst.Height := ScaleY(44);
+  UpdateLocal(nil);
+
+  SummaryPage := CreateCustomPage(LocalPage.ID, 'Ready to install', 'Check the sizes and times, then click Install.');
   SumTotals := MakeLabel(SummaryPage, '', 0, True);
   SumMemo := TNewMemo.Create(SummaryPage);
   SumMemo.Parent := SummaryPage.Surface;
@@ -653,6 +931,8 @@ begin
      (PageID = AIPage.ID) or (PageID = LibPage.ID)) then Result := True;
   if PageID = AIPage.ID then Result := Result or IsApp('none');
   if PageID = LibPage.ID then Result := Result or not HasResearch;
+  if PageID = ArchPage.ID then Result := Result or not (HasResearch or IsApp('full')) or KeepChoices;
+  if PageID = LocalPage.ID then Result := Result or not HasResearch or KeepChoices;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -671,6 +951,16 @@ begin
     Full := IsApp('full');
     MapsLabel.Visible := Full; MapsList.Visible := Full;
   end;
+  if CurPageID = LocalPage.ID then UpdateLocal(nil);
+  if CurPageID = ArchPage.ID then UpdateArchives(nil);
+  if CurPageID = LibPage.ID then begin
+    ChkGit.Visible := Probed and not HaveAntiword;
+    ChkChrome.Visible := Probed and not HaveBrowser;
+  end;
+  if (CurPageID = wpFinished) and IsApp('slim') and not HasResearch then
+    WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10#13#10 +
+      'Offline archives (Wikipedia and more): JustAI searches them while it answers. Download .zim files from library.kiwix.org, ' +
+      'then add their folder in Tools/Settings - Library - ZIM archive folders. Or run Setup again and add the Research library.';
   if CurPageID = SummaryPage.ID then begin
     ShowSummary;
     WizardForm.NextButton.Caption := SetupMessage(msgButtonInstall);
@@ -718,6 +1008,10 @@ begin
       Result := False;
     end;
   end;
+  if (CurPageID = LocalPage.ID) and ChkLocal.Checked and not LocalOn then begin
+    MsgBox('Type where you live and click Find - or untick "Build a Local Area".', mbError, MB_OK);
+    Result := False;
+  end;
   if CurPageID = SummaryPage.ID then begin
     Totals(Lines, Dl, Disk);
     if (FreeMB(WizardDirValue) >= 0) and (FreeMB(WizardDirValue) < Disk) then begin
@@ -759,6 +1053,31 @@ begin
   if ChkWeekly.Checked then SetIniString('plan', 'weekly', '1', F) else SetIniString('plan', 'weekly', '0', F);
   if ChkDesktop.Checked then SetIniString('plan', 'desktop', '1', F) else SetIniString('plan', 'desktop', '0', F);
   SetIniString('plan', 'source', ExpandConstant('{param:SOURCE|}'), F);
+  if AmdGpu then SetIniString('plan', 'rocm', '1', F) else SetIniString('plan', 'rocm', '0', F);
+  Key := '';
+  if ChkGit.Visible and ChkGit.Checked then Key := 'git';
+  if ChkChrome.Visible and ChkChrome.Checked then begin if Key <> '' then Key := Key + ','; Key := Key + 'chrome'; end;
+  if Key = '' then Key := 'none';
+  SetIniString('plan', 'tools', Key, F);
+  Key := '';
+  if HasResearch or IsApp('full') then
+    for I := 0 to ArchList.Items.Count - 1 do
+      if (ArchRow[I] > 0) and ArchList.Checked[I] and ArchList.ItemEnabled[I] then begin
+        if Key <> '' then Key := Key + ',';
+        Key := Key + Field(Cat('archives', 'a' + IntToStr(ArchRow[I])), 1);
+      end;
+  SetIniString('plan', 'archives', Key, F);
+  if LocalOn then begin
+    SetIniString('plan', 'local', '1', F);
+    SetIniString('plan', 'localName', PlaceCombo.Text, F);
+    SetIniString('plan', 'localLat', PlaceLat[PlaceCombo.ItemIndex], F);
+    SetIniString('plan', 'localLon', PlaceLon[PlaceCombo.ItemIndex], F);
+    SetIniString('plan', 'localCountry', PlaceCC[PlaceCombo.ItemIndex], F);
+    SetIniString('plan', 'localKm', IntToStr(ComboNum(KmCombo)), F);
+    SetIniString('plan', 'localPerGroup', IntToStr(ComboNum(PerCombo)), F);
+    if TopoCount > 0 then SetIniString('plan', 'localTopoKm', IntToStr(ComboNum(TopoCombo)), F) else SetIniString('plan', 'localTopoKm', '0', F);
+    if IsApp('full') and ChkLocalMap.Checked then SetIniString('plan', 'localMap', '1', F) else SetIniString('plan', 'localMap', '0', F);
+  end else SetIniString('plan', 'local', '0', F);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

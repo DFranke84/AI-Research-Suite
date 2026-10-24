@@ -82,6 +82,31 @@ foreach ($g in $groups.Keys) {
 }
 $out.Add('[wiki]'); $out.Add('nopicMB=52700'); $out.Add('maxiMB=127400')
 
+# ---- offline archives (AIPortable's data\wikipedia-catalog.json - the same list its Wikipedia tab offers)
+# English Wikipedia full text / with pictures are offered separately ([wiki]); the condensed ("mini")
+# Wikipedia is never offered - the library tools would build intro-only articles from it.
+# An archive a starter pack is built from carries that pack's archive key, so the wizard can show it as included.
+$archivesPy = Get-Content (Join-Path $Apps 'Research\_scripts\archives.py') -Raw
+$prefixToKey = @{}
+foreach ($m in [regex]::Matches($archivesPy, '"([\w-]+)":\s*\("[^"]*",\s*"([^"]+)"')) { $prefixToKey[$m.Groups[2].Value] = $m.Groups[1].Value }
+$se = [regex]::Match($archivesPy, 'SE_SITES\s*=\s*\[([^\]]+)\]').Groups[1].Value
+foreach ($m in [regex]::Matches($se, '"([\w]+)"')) { $prefixToKey["$($m.Groups[1].Value).stackexchange.com_en_all_"] = "se-$($m.Groups[1].Value)" }
+$wc = Get-Content (Join-Path $Apps 'AIPortable\data\wikipedia-catalog.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$cats = @($wc.categories.PSObject.Properties | Sort-Object { $_.Value } | ForEach-Object { $_.Name })
+$rows = @()
+foreach ($z in $wc.zims.PSObject.Properties) {
+  $id = $z.Name; $v = $z.Value
+  if ($id -like 'wikipedia_en_all_*') { continue }
+  $stem = $id -replace '\.zim$', ''
+  $folder = ([uri]$v.url).Segments[-2].TrimEnd('/')
+  $name = ($v.name -replace '[^\x20-\x7E]', '-' -replace '\s*\(-\s*[\d.]+ GB\)', '' -replace '--+', '-' -replace '\s+-\s+-?', ' - ').Trim()
+  $rows += [pscustomobject]@{ Cat = [array]::IndexOf($cats, $v.category); Category = $v.category; Line = "$id|$name|$(MB $v.size)|$($v.category)|$folder|$($prefixToKey["$($stem)_"])" }
+}
+$rows = @($rows | Sort-Object Cat)
+$out.Add('[archives]'); $out.Add("count=$($rows.Count)")
+$i = 0
+foreach ($r in $rows) { $i++; $out.Add("a$i=$($r.Line)") }
+
 # ---- the apps themselves (measured on a fresh install; download / on disk)
 $out.Add('[base]')
 $out.Add('appDlMB=1500'); $out.Add('appDiskMB=2600')       # Node.js, Electron + npm packages, Ollama, Kiwix
