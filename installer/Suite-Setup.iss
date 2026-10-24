@@ -96,6 +96,7 @@ var
   SpeedCombo: TNewComboBox;
   RadFull, RadSlim, RadNone: TNewRadioButton;
   ChkResearch, ChkViewer: TNewCheckBox;
+  TierPanel, ModelPanel: TPanel;
   TierRadios: array[0..4] of TNewRadioButton;
   ModelRadios: array[0..3] of TNewRadioButton;
   ModelInfo: array[0..3] of TNewStaticText;
@@ -305,7 +306,6 @@ begin
   { tiers: any size up to the card's memory }
   for I := 0 to TierCount - 1 do begin
     TierRadios[I].Enabled := (VramGB = 0) and (TierIds[I] <= 8) or (VramGB > 0) and (TierIds[I] <= VramGB);
-    if not TierRadios[I].Enabled then TierRadios[I].Caption := IntToStr(TierIds[I]) + ' GB - needs a bigger card';
   end;
   for I := TierCount - 1 downto 0 do
     if TierRadios[I].Enabled then begin TierRadios[I].Checked := True; break; end;
@@ -370,7 +370,7 @@ begin
   Lines := Pad + Format('%10s %10s %14s', ['Download', 'On disk', 'Time']) + #13#10;
   if not IsApp('none') then begin
     if IsApp('full') then Key := 'AIPortable' else Key := 'AIPortable-JustAI';
-    AddRow(Lines, DlMB, DiskMB, Key + ' + Node.js, Electron, Ollama, Kiwix', CatInt('base', 'appDlMB'), CatInt('base', 'appDiskMB'));
+    AddRow(Lines, DlMB, DiskMB, Key + ' + its runtimes', CatInt('base', 'appDlMB'), CatInt('base', 'appDiskMB'));
     E := ModelEntry(SelectedTier, SelectedModel);
     M := StrToIntDef(Field(E, 4), 0);
     AddRow(Lines, DlMB, DiskMB, 'Chat model: ' + Field(E, 2), M, M);
@@ -456,7 +456,7 @@ end;
 
 { ---------------------------------------------------------------- building the pages }
 procedure InitializeWizard;
-var I, Top, N: Integer; E, L, G: String;
+var I, Top, N: Integer; E, L, G: String; Lbl: TNewStaticText;
 begin
   ExtractTemporaryFile('catalog.ini');
   CatIni := ExpandConstant('{tmp}\catalog.ini');
@@ -531,30 +531,46 @@ begin
   { -- AI options (after the folder page) }
   AIPage := CreateCustomPage(wpSelectDir, 'AI options', 'Pick a model size up to your graphics card''s memory, then a model. More can be added later in the app.');
   MakeLabel(AIPage, 'Model size', 0, True);
+  { sizes and models sit on panels of their own, so they are two separate radio groups }
+  TierPanel := TPanel.Create(AIPage);
+  TierPanel.Parent := AIPage.Surface;
+  TierPanel.BevelOuter := bvNone; TierPanel.ParentBackground := False; TierPanel.Color := clWindow;
+  TierPanel.Top := ScaleY(18); TierPanel.Width := AIPage.SurfaceWidth; TierPanel.Height := ScaleY(22);
   for I := 0 to TierCount - 1 do begin
     TierRadios[I] := TNewRadioButton.Create(AIPage);
-    TierRadios[I].Parent := AIPage.Surface;
+    TierRadios[I].Parent := TierPanel;
     TierRadios[I].Caption := IntToStr(TierIds[I]) + ' GB';
-    TierRadios[I].Top := ScaleY(20);
+    TierRadios[I].Top := ScaleY(2);
     TierRadios[I].Left := I * ScaleX(84);
     TierRadios[I].Width := ScaleX(82);
     TierRadios[I].OnClick := @TierClick;
   end;
-  MakeLabel(AIPage, 'Smaller models answer faster and leave room for long chats; bigger ones give better answers.', ScaleY(44), False);
-  MakeLabel(AIPage, 'Chat model', ScaleY(68), True);
+  L := 'Sizes above your graphics card''s memory are greyed out. Smaller models answer faster; bigger ones answer better.';
+  Lbl := MakeLabel(AIPage, L, ScaleY(44), False);
+  Lbl.AutoSize := False; Lbl.WordWrap := True; Lbl.Width := AIPage.SurfaceWidth; Lbl.Height := ScaleY(28);
+  MakeLabel(AIPage, 'Chat model', ScaleY(74), True);
+  ModelPanel := TPanel.Create(AIPage);
+  ModelPanel.Parent := AIPage.Surface;
+  ModelPanel.BevelOuter := bvNone; ModelPanel.ParentBackground := False; ModelPanel.Color := clWindow;
+  ModelPanel.Top := ScaleY(92); ModelPanel.Width := AIPage.SurfaceWidth; ModelPanel.Height := ScaleY(4 * 30);
   for I := 0 to MaxModels - 1 do begin
     ModelRadios[I] := TNewRadioButton.Create(AIPage);
-    ModelRadios[I].Parent := AIPage.Surface;
-    ModelRadios[I].Top := ScaleY(88 + I * 36);
-    ModelRadios[I].Width := ScaleX(190);
+    ModelRadios[I].Parent := ModelPanel;
+    ModelRadios[I].Top := ScaleY(I * 30);
+    ModelRadios[I].Width := ScaleX(165);
     case I of
-      0: E := 'Survival - practical how-to answers, best match for the library (recommended)';
-      1: E := 'General - a good all-rounder for everyday questions';
-      2: E := 'Reasoning - thinks step by step; slower, better on hard problems';
+      0: E := 'Survival - practical how-to answers (recommended)';
+      1: E := 'General - an all-rounder for everyday questions';
+      2: E := 'Reasoning - step by step; slower, better on hard problems';
       3: E := 'Vision - can look at photos you attach';
     end;
-    ModelInfo[I] := MakeLabel(AIPage, E, ScaleY(90 + I * 36), False);
-    ModelInfo[I].Left := ScaleX(200);
+    ModelInfo[I] := TNewStaticText.Create(AIPage);
+    ModelInfo[I].Parent := ModelPanel;
+    ModelInfo[I].Caption := E;
+    ModelInfo[I].Top := ScaleY(I * 30 + 2);
+    ModelInfo[I].Left := ScaleX(170);
+    ModelInfo[I].AutoSize := False; ModelInfo[I].WordWrap := True;
+    ModelInfo[I].Width := AIPage.SurfaceWidth - ScaleX(170); ModelInfo[I].Height := ScaleY(28);
   end;
   ModelRadios[0].Checked := True;
   ChkVoice := TNewCheckBox.Create(AIPage); ChkVoice.Parent := AIPage.Surface;
