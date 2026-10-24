@@ -452,7 +452,9 @@ var K: Integer;
 begin
   K := ComboNum(TopoCombo);
   if (K <= 0) or not PlaceIsUS then Result := 0
-  else Result := ((2 * K + 12) div 13) * ((2 * K + 13) div 14);
+  { the sheets sit on a fixed grid, so the square around you usually straddles one more each way
+    (5 km around Asheville needed 4) }
+  else Result := ((2 * K + 12) div 13 + 1) * ((2 * K + 13) div 14 + 1);
 end;
 
 { 11 groups (flowering plants, conifers, grasses, ferns, birds, mammals, fish, reptiles, insects, spiders,
