@@ -357,8 +357,8 @@ var Pad: String;
 begin
   DlMB := DlMB + Dl; DiskMB := DiskMB + Disk;
   Pad := Name;
-  while Length(Pad) < 46 do Pad := Pad + ' ';
-  Lines := Lines + Pad + Format('%10s %10s %14s', [SizeText(Dl), SizeText(Disk), TimeText(Dl)]) + #13#10;
+  while Length(Pad) < 35 do Pad := Pad + ' ';
+  Lines := Lines + Pad + Format('%8s %8s %12s', [SizeText(Dl), SizeText(Disk), TimeText(Dl)]) + #13#10;
 end;
 
 procedure Totals(var Lines: String; var DlMB, DiskMB: Integer);
@@ -366,8 +366,8 @@ var I, M, PacksMB, PacksN, MapsMB: Integer; E, Key, Pad: String;
 begin
   Lines := ''; DlMB := 0; DiskMB := 0;
   Pad := 'Item';
-  while Length(Pad) < 46 do Pad := Pad + ' ';
-  Lines := Pad + Format('%10s %10s %14s', ['Download', 'On disk', 'Time']) + #13#10;
+  while Length(Pad) < 35 do Pad := Pad + ' ';
+  Lines := Pad + Format('%8s %8s %12s', ['Download', 'On disk', 'Time']) + #13#10;
   if not IsApp('none') then begin
     if IsApp('full') then Key := 'AIPortable' else Key := 'AIPortable-JustAI';
     AddRow(Lines, DlMB, DiskMB, Key + ' + its runtimes', CatInt('base', 'appDlMB'), CatInt('base', 'appDiskMB'));
@@ -397,8 +397,8 @@ begin
     if PacksN > 0 then begin
       AddRow(Lines, DlMB, DiskMB, 'Starter packs (' + IntToStr(PacksN) + ')', PacksMB, PacksMB + PacksMB * CatInt('base', 'pagesPercent') div 100);
     end;
-    if WikiChoice = 'nopic' then AddRow(Lines, DlMB, DiskMB, 'Wikipedia - full text, no pictures', CatInt('wiki', 'nopicMB'), CatInt('wiki', 'nopicMB'));
-    if WikiChoice = 'maxi' then AddRow(Lines, DlMB, DiskMB, 'Wikipedia - complete, with pictures', CatInt('wiki', 'maxiMB'), CatInt('wiki', 'maxiMB'));
+    if WikiChoice = 'nopic' then AddRow(Lines, DlMB, DiskMB, 'Wikipedia (text, no pictures)', CatInt('wiki', 'nopicMB'), CatInt('wiki', 'nopicMB'));
+    if WikiChoice = 'maxi' then AddRow(Lines, DlMB, DiskMB, 'Wikipedia (with pictures)', CatInt('wiki', 'maxiMB'), CatInt('wiki', 'maxiMB'));
   end;
   if ChkViewer.Checked then AddRow(Lines, DlMB, DiskMB, 'Library Viewer + tablet data', CatInt('base', 'viewerDlMB'), CatInt('base', 'viewerDiskMB'));
 end;
@@ -420,7 +420,7 @@ begin
     '  -  about ' + TimeText(Dl) + ' at ' + IntToStr(SpeedMbps) + ' Mbps';
   Warn := '';
   if (Free >= 0) and (Free < Disk) then Warn := 'Not enough space: ' + ExtractFileDrive(WizardDirValue) + ' has ' + SizeText(Free) + ' free. Go back and pick another folder or fewer items.'
-  else if Free >= 0 then Warn := SizeText(Free - Disk) + ' will be left free afterwards. Sizes are estimates; the downloads are checked as they go.';
+  else if Free >= 0 then Warn := SizeText(Free - Disk) + ' will be left free afterwards (sizes are estimates).';
   SumWarn.Caption := Warn;
   RadLater.Enabled := WikiChoice <> 'none';
   if not RadLater.Enabled then RadNow.Checked := True;
@@ -548,11 +548,11 @@ begin
   L := 'Sizes above your graphics card''s memory are greyed out. Smaller models answer faster; bigger ones answer better.';
   Lbl := MakeLabel(AIPage, L, ScaleY(44), False);
   Lbl.AutoSize := False; Lbl.WordWrap := True; Lbl.Width := AIPage.SurfaceWidth; Lbl.Height := ScaleY(28);
-  MakeLabel(AIPage, 'Chat model', ScaleY(74), True);
+  MakeLabel(AIPage, 'Chat model', ScaleY(80), True);
   ModelPanel := TPanel.Create(AIPage);
   ModelPanel.Parent := AIPage.Surface;
   ModelPanel.BevelOuter := bvNone; ModelPanel.ParentBackground := False; ModelPanel.Color := clWindow;
-  ModelPanel.Top := ScaleY(92); ModelPanel.Width := AIPage.SurfaceWidth; ModelPanel.Height := ScaleY(4 * 30);
+  ModelPanel.Top := ScaleY(98); ModelPanel.Width := AIPage.SurfaceWidth; ModelPanel.Height := ScaleY(4 * 30);
   for I := 0 to MaxModels - 1 do begin
     ModelRadios[I] := TNewRadioButton.Create(AIPage);
     ModelRadios[I].Parent := ModelPanel;
@@ -561,7 +561,7 @@ begin
     case I of
       0: E := 'Survival - practical how-to answers (recommended)';
       1: E := 'General - an all-rounder for everyday questions';
-      2: E := 'Reasoning - step by step; slower, better on hard problems';
+      2: E := 'Reasoning - thinks step by step (slower)';
       3: E := 'Vision - can look at photos you attach';
     end;
     ModelInfo[I] := TNewStaticText.Create(AIPage);
@@ -616,7 +616,7 @@ begin
   SumMemo := TNewMemo.Create(SummaryPage);
   SumMemo.Parent := SummaryPage.Surface;
   SumMemo.Top := ScaleY(20); SumMemo.Width := SummaryPage.SurfaceWidth; SumMemo.Height := ScaleY(120);
-  SumMemo.ReadOnly := True; SumMemo.ScrollBars := ssVertical;
+  SumMemo.ReadOnly := True; SumMemo.ScrollBars := ssBoth; SumMemo.WordWrap := False;
   SumMemo.Font.Name := 'Consolas'; SumMemo.Font.Size := 8;
   SumWarn := MakeLabel(SummaryPage, '', ScaleY(146), False);
   SumWarn.AutoSize := False; SumWarn.WordWrap := True; SumWarn.Width := SummaryPage.SurfaceWidth; SumWarn.Height := ScaleY(28);
