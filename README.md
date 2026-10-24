@@ -30,10 +30,19 @@ and double-click it. No administrator rights are needed. Setup:
    and where to put them (it suggests the drive with the most room),
 3. lets you pick an AI model size up to your graphics card's memory, a model, voice input and
    (AIPortable) offline map regions,
-4. lets you pick starter packs and an offline Wikipedia,
+4. lets you pick starter packs (every page a full article), offline archives - complete English
+   Wikipedia (text only, or with pictures) and about 40 more, as much or as little as you like -
+   and a **Local Area** for where you live (plants, wildlife, fungi, weather, USGS topo maps and,
+   for AIPortable, a street map of the area),
 5. shows the download size, the space needed and about how long it will take,
-6. then downloads and sets up everything in its own window. Close it any time and run Setup
-   again - it carries on where it stopped.
+6. then downloads and sets up everything in its own window. The PC is kept awake meanwhile, each
+   step is tried three times, and partial downloads are kept: close it any time, or lose the
+   connection, and running Setup again carries on from the same point.
+
+Archives go into the Research library's folder when the library is installed (the AI apps read
+them there), or into AIPortable's own folder when it is installed without the library. With a
+full Wikipedia in the library, the Wikipedia articles pack and Local Area read their articles from
+it instead of wikipedia.org, so Setup downloads it first.
 
 Run Setup again later to **update and repair** (keeps your choices) or to **change your choices**.
 Uninstalling asks whether to remove the apps' program files too; your chats, models, maps and
