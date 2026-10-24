@@ -446,7 +446,7 @@ begin
   Result := (PlaceCount > 0) and (PlaceCombo.ItemIndex >= 0) and (PlaceCC[PlaceCombo.ItemIndex] = 'us');
 end;
 
-{ USGS 7.5-minute maps are about 13 x 14 km and about 50 MB each }
+{ USGS 7.5-minute maps are about 13 x 14 km and about 55 MB each (measured, Asheville 2026-10) }
 function TopoCount: Integer;
 var K: Integer;
 begin
@@ -456,18 +456,31 @@ begin
 end;
 
 { 11 groups (flowering plants, conifers, grasses, ferns, birds, mammals, fish, reptiles, insects, spiders,
-  fungi); a page with its photos is roughly 2.5 MB. Quiet areas have fewer species than asked for. }
+  fungi). Measured on a test build (Asheville, 2026-10): a page with its photos is about 1.7 MB and takes about
+  12 s to build - iNaturalist is asked one species at a time. Quiet areas have fewer species than asked for. }
 function SpeciesMB: Integer;
 begin
-  Result := 11 * ComboNum(PerCombo) * 25 div 10;
+  Result := 11 * ComboNum(PerCombo) * 17 div 10;
 end;
 
-{ street detail for the square around the place: about 1.5 MB per 1,000 square km }
+function SpeciesMinutes: Integer;
+begin
+  Result := 11 * ComboNum(PerCombo) * 12 div 60;
+end;
+
+function MinutesText(M: Integer): String;
+begin
+  if M < 60 then Result := IntToStr(M) + ' min'
+  else if M mod 60 = 0 then Result := IntToStr(M div 60) + ' h'
+  else Result := IntToStr(M div 60) + ' h ' + IntToStr(M mod 60) + ' min';
+end;
+
+{ street detail for the square around the place: about 7 MB per 1,000 square km (17 MB for 25 km around Asheville) }
 function AreaMapMB: Integer;
 var R: Integer;
 begin
   R := ComboNum(KmCombo);
-  Result := (2 * R) * (2 * R) * 15 div 10000;
+  Result := (2 * R) * (2 * R) * 7 div 1000;
   if Result < 5 then Result := 5;
 end;
 
@@ -482,9 +495,9 @@ begin
   ChkLocalMap.Visible := IsApp('full'); ChkLocalMap.Enabled := On;
   if not On then begin LocalEst.Caption := ''; exit; end;
   if not Found then begin LocalEst.Caption := 'Type where you live and click Find.'; exit; end;
-  Mins := 11 * ComboNum(PerCombo) * 4 div 60;
-  T := 'About ' + SizeText(SpeciesMB) + ' of species pages (about ' + IntToStr(Mins) + ' min to build - iNaturalist is asked one species at a time)';
-  if TopoCount > 0 then T := T + ', ' + IntToStr(TopoCount) + ' topo maps (about ' + SizeText(TopoCount * 50) + ')';
+  Mins := SpeciesMinutes;
+  T := 'About ' + SizeText(SpeciesMB) + ' of species pages, about ' + MinutesText(Mins) + ' to build (iNaturalist is asked one species at a time)';
+  if TopoCount > 0 then T := T + ', ' + IntToStr(TopoCount) + ' topo maps (about ' + SizeText(TopoCount * 55) + ')';
   if IsApp('full') and ChkLocalMap.Checked then T := T + ', a ' + SizeText(AreaMapMB) + ' street map';
   LocalEst.Caption := T + '.';
 end;
@@ -526,6 +539,15 @@ begin
   Pad := Name;
   while Length(Pad) < 35 do Pad := Pad + ' ';
   Lines := Lines + Pad + Format('%8s %8s %12s', [SizeText(Dl), SizeText(Disk), TimeText(Dl)]) + #13#10;
+end;
+
+procedure AddRowTime(var Lines: String; var DlMB, DiskMB: Integer; Name: String; Dl, Disk: Integer; Time: String);
+var Pad: String;
+begin
+  DlMB := DlMB + Dl; DiskMB := DiskMB + Disk;
+  Pad := Name;
+  while Length(Pad) < 35 do Pad := Pad + ' ';
+  Lines := Lines + Pad + Format('%8s %8s %12s', [SizeText(Dl), SizeText(Disk), Time]) + #13#10;
 end;
 
 procedure Totals(var Lines: String; var DlMB, DiskMB: Integer);
@@ -577,8 +599,8 @@ begin
     if PacksN > 0 then AddRow(Lines, DlMB, DiskMB, 'More archives (' + IntToStr(PacksN) + ')', M, M);
   end;
   if LocalOn then begin
-    AddRow(Lines, DlMB, DiskMB, 'Local Area: species pages', SpeciesMB, SpeciesMB);
-    if TopoCount > 0 then AddRow(Lines, DlMB, DiskMB, 'Local Area: ' + IntToStr(TopoCount) + ' topo maps', TopoCount * 50, TopoCount * 50);
+    AddRowTime(Lines, DlMB, DiskMB, 'Local Area: species pages', SpeciesMB, SpeciesMB, MinutesText(SpeciesMinutes));
+    if TopoCount > 0 then AddRow(Lines, DlMB, DiskMB, 'Local Area: ' + IntToStr(TopoCount) + ' topo maps', TopoCount * 55, TopoCount * 55);
     if IsApp('full') and ChkLocalMap.Checked then AddRow(Lines, DlMB, DiskMB, 'Street map of your area', AreaMapMB, AreaMapMB);
   end;
   if ChkViewer.Checked then AddRow(Lines, DlMB, DiskMB, 'Library Viewer + tablet data', CatInt('base', 'viewerDlMB'), CatInt('base', 'viewerDiskMB'));
@@ -599,6 +621,7 @@ begin
   Free := FreeMB(WizardDirValue);
   SumTotals.Caption := 'Download ' + SizeText(Dl) + '  -  space needed on ' + ExtractFileDrive(WizardDirValue) + ' ' + SizeText(Disk) +
     '  -  about ' + TimeText(Dl) + ' at ' + IntToStr(SpeedMbps) + ' Mbps';
+  if LocalOn then SumTotals.Caption := SumTotals.Caption + ' + Local Area ' + MinutesText(SpeciesMinutes);
   Warn := '';
   if (Free >= 0) and (Free < Disk) then Warn := 'Not enough space: ' + ExtractFileDrive(WizardDirValue) + ' has ' + SizeText(Free) + ' free. Go back and pick another folder or fewer items.'
   else if Free >= 0 then Warn := SizeText(Free - Disk) + ' will be left free afterwards (sizes are estimates).';
