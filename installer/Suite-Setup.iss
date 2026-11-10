@@ -1138,8 +1138,13 @@ begin
     if FileExists(Suite + '\update.ps1') then
       if SuppressibleMsgBox('Also remove the apps'' program files (AIPortable / JustAI, the library tools, the viewer)?' + #13#10#13#10 +
          'Your chats, AI models, maps, library and notes are kept in their folders either way - delete those yourself if you don''t need them.',
-         mbConfirmation, MB_YESNO, IDNO) = IDYES then
-        Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + Suite + '\update.ps1" -Remove -Yes', Suite, SW_HIDE, ewWaitUntilTerminated, RC);
+         mbConfirmation, MB_YESNO, IDNO) = IDYES then begin
+        if not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + Suite + '\update.ps1" -Remove -Yes', Suite, SW_HIDE, ewWaitUntilTerminated, RC) then RC := 1;
+        if RC <> 0 then
+          SuppressibleMsgBox('Some program files could not be removed - usually because an app was still open. Close the AI apps and ' +
+            'Library Manager, then delete what is left in ' + ExpandConstant('{app}') + ' yourself (your own data is in there too).',
+            mbInformation, MB_OK, IDOK);
+      end;
   end;
 end;
 

@@ -73,7 +73,7 @@ The zip is built from git, so only tracked files can be in it.
 
 The installer: `tools\build-installer.ps1` (needs Inno Setup 6) refreshes `installer\catalog.ini` from
 the apps' own catalogs (models, maps, starter packs) and writes `dist\Suite-Setup-<VERSION>.exe`;
-attach it to this repo's release. For an unattended test install:
+attach it to this repo's release. Add `-RefreshSizes` to take today's archive sizes from download.kiwix.org. For an unattended test install:
 `Suite-Setup-<v>.exe /VERYSILENT /DIR=C:\AI-Test\Suite /SOURCE=<folder of release zips> /PLANFILE=<plan.ini>`
 (the plan.ini keys are listed at the top of `install.ps1`).
 

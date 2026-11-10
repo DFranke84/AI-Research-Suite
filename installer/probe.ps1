@@ -76,8 +76,18 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
 }
 if (-not $vram) {
   $best = 0
-  Get-ItemProperty -Path 'HKLM:\SYSTEM\ControlSet001\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0*' -Name 'HardwareInformation.qwMemorySize' |
-    ForEach-Object { $b = [double]$_.'HardwareInformation.qwMemorySize'; if ($b -gt $best) { $best = $b } }
+  # CurrentControlSet (the one Windows is using), not ControlSet001; older drivers only have the 32-bit MemorySize
+  Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0*' |
+    ForEach-Object {
+      $b = [double]$_.'HardwareInformation.qwMemorySize'
+      if (-not $b -and $_.'HardwareInformation.MemorySize' -is [int]) {   # a DWORD over 2 GB reads as a negative Int32
+        $b = [double][BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$_.'HardwareInformation.MemorySize'), 0)
+      }
+      if (-not $b -and $_.'HardwareInformation.MemorySize' -is [byte[]] -and $_.'HardwareInformation.MemorySize'.Length -ge 4) {
+        $b = [double][BitConverter]::ToUInt32($_.'HardwareInformation.MemorySize', 0)
+      }
+      if ($b -gt $best) { $best = $b }
+    }
   if ($best -gt 0) { $vram = [int][math]::Round($best / 1GB) }
 }
 

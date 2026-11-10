@@ -55,7 +55,7 @@ $Install = @($Install -split ',' | Where-Object { $_ })
 # settings.json (written by the installer and the apps): weeklyCheck, lastCheck, and optionally
 # source - a folder of release zips to use instead of GitHub (an offline PC updated from a USB stick).
 $settings = $null
-try { $settings = Get-Content (Join-Path $suiteDir 'settings.json') -Raw -ErrorAction Stop | ConvertFrom-Json } catch { }
+try { $settings = Get-Content (Join-Path $suiteDir 'settings.json') -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json } catch { }
 if (-not $Source -and $settings -and $settings.source) { $Source = $settings.source }
 $backupRoot = Join-Path $suiteDir 'backups'
 $logDir = Join-Path $suiteDir 'logs'
@@ -147,9 +147,35 @@ function Get-Bytes($from, [string]$to) {
 
 function Hash([string]$path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLower() }
 
+# Backups of ONE piece, newest first. Matched on "<name>-<date>-<time>-from-", not "<name>-*":
+# "AIPortable-*" would also pick up AIPortable-JustAI's backups.
+function Get-Backups([string]$name) {
+  $rx = '^' + [regex]::Escape($name) + '-\d{8}-\d{6}-from-'
+  @(Get-ChildItem $backupRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match $rx } | Sort-Object Name -Descending)
+}
+
 function Remove-OldBackups([string]$name) {
-  Get-ChildItem $backupRoot -Directory -Filter "$name-*" -ErrorAction SilentlyContinue |
-    Sort-Object Name -Descending | Select-Object -Skip 3 | ForEach-Object { Remove-Item $_.FullName -Recurse -Force }
+  Get-Backups $name | Select-Object -Skip 3 | ForEach-Object { Remove-Item $_.FullName -Recurse -Force }
+}
+
+# Put back what one backup saved (used by -Rollback, and after an update that stopped half-way).
+function Restore-Backup([string]$bakDir, [string]$folder) {
+  foreach ($rel in @(Get-Content (Join-Path $bakDir 'added.txt') -ErrorAction SilentlyContinue | Where-Object { $_ })) {
+    $p = Join-Path $folder $rel
+    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
+  }
+  $files = Join-Path $bakDir 'files'
+  if (Test-Path $files) {
+    Get-ChildItem $files -Recurse -File | ForEach-Object {
+      $rel = $_.FullName.Substring($files.Length + 1)
+      $dst = Join-Path $folder $rel
+      New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+      Copy-Item -LiteralPath $_.FullName -Destination $dst -Force
+    }
+  }
+  $mf = Join-Path $folder 'release-manifest.json'
+  $oldMf = Join-Path $bakDir 'release-manifest.json'
+  if (Test-Path $oldMf) { Copy-Item $oldMf $mf -Force } elseif (Test-Path $mf) { Remove-Item $mf -Force }
 }
 
 # Install or update one component from its release zip.
@@ -208,15 +234,26 @@ function Update-Component($c, $inst, $latest) {
       Set-Content -Path (Join-Path $bak 'info.txt') -Encoding UTF8 -Value "$($c.name): $oldLabel -> $($latest.version) on $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
     }
 
-    # Apply.
+    # Apply. If a file can't be replaced half-way (locked, disk full), the old version is put back
+    # from the backup just made, so the piece is never left as a mix of two versions.
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
-    foreach ($rel in $toCopy) {
-      $dst = Join-Path $folder $rel
-      New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
-      Copy-Item -LiteralPath (Join-Path $new $rel) -Destination $dst -Force
+    try {
+      foreach ($rel in $toCopy) {
+        $dst = Join-Path $folder $rel
+        New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
+        Copy-Item -LiteralPath (Join-Path $new $rel) -Destination $dst -Force
+      }
+      foreach ($rel in $toRemove) { Remove-Item -LiteralPath (Join-Path $folder $rel) -Force }
+      Copy-Item (Join-Path $new 'release-manifest.json') $mf -Force
+    } catch {
+      $why = $_.Exception.Message
+      if ($inst.present) {
+        try { Restore-Backup $bak $folder; Remove-Item $bak -Recurse -Force -ErrorAction SilentlyContinue }
+        catch { throw "the update stopped half-way ($why) and putting the old version back also failed ($($_.Exception.Message)) - run update.ps1 -Rollback $($c.name)" }
+        throw "the update stopped half-way ($why) - the old version was put back, nothing changed"
+      }
+      throw
     }
-    foreach ($rel in $toRemove) { Remove-Item -LiteralPath (Join-Path $folder $rel) -Force }
-    Copy-Item (Join-Path $new 'release-manifest.json') $mf -Force
     Remove-OldBackups $c.name
 
     Say ("    {0} files updated, {1} added, {2} removed" -f ($toCopy.Count - $added.Count), $added.Count, $toRemove.Count) 'Green'
@@ -257,26 +294,11 @@ function Update-Component($c, $inst, $latest) {
 function Undo-Update($c) {
   $inst = Get-Installed $c
   if ($inst.git) { throw "$($c.name) is a git checkout - use git to go back" }
-  $bak = Get-ChildItem $backupRoot -Directory -Filter "$($c.name)-*" -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+  $bak = Get-Backups $c.name | Select-Object -First 1
   if (-not $bak) { throw "No saved earlier version of $($c.name) in $backupRoot" }
   Say "Rolling back $($c.name): $((Get-Content (Join-Path $bak.FullName 'info.txt') -Raw).Trim())" 'Cyan'
   Wait-Closed $inst.folder $c.title
-  $files = Join-Path $bak.FullName 'files'
-  foreach ($rel in @(Get-Content (Join-Path $bak.FullName 'added.txt') -ErrorAction SilentlyContinue | Where-Object { $_ })) {
-    $p = Join-Path $inst.folder $rel
-    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
-  }
-  if (Test-Path $files) {
-    Get-ChildItem $files -Recurse -File | ForEach-Object {
-      $rel = $_.FullName.Substring($files.Length + 1)
-      $dst = Join-Path $inst.folder $rel
-      New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
-      Copy-Item -LiteralPath $_.FullName -Destination $dst -Force
-    }
-  }
-  $mf = Join-Path $inst.folder 'release-manifest.json'
-  $oldMf = Join-Path $bak.FullName 'release-manifest.json'
-  if (Test-Path $oldMf) { Copy-Item $oldMf $mf -Force } elseif (Test-Path $mf) { Remove-Item $mf -Force }
+  Restore-Backup $bak.FullName $inst.folder
   Remove-Item $bak.FullName -Recurse -Force
   Say "  Done. If that version used different dependencies, run its setup again." 'Green'
 }
@@ -311,12 +333,12 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir ("update-{0}.log" -f (Get-Date -Format 'yyyy-MM-dd'))
 if (-not $Json) { try { Start-Transcript -Path $log -Append | Out-Null } catch { } }
 $exit = 0
-try {
+try { do {   # do..while($false): "break" ends early but still reaches "exit $exit" (return would skip it)
   if ($Rollback) {
     $c = $suite.components | Where-Object { $_.name -eq $Rollback }
     if (-not $c) { throw "Unknown piece '$Rollback' - see suite.json" }
     Undo-Update $c
-    return
+    break
   }
   if ($Remove) {
     foreach ($c in $suite.components) {
@@ -324,7 +346,7 @@ try {
       if ($Only.Count -and $Only -notcontains $c.name) { continue }
       try { Remove-Component $c } catch { Say "  $($c.name): $($_.Exception.Message)" 'Red'; $exit = 1 }
     }
-    return
+    break
   }
 
   $rows = @()
@@ -358,7 +380,7 @@ try {
                                                          update = $_.update; status = $_.status; notes = $_.notes; page = $_.page } })
     }
     $out | ConvertTo-Json -Depth 4
-    if ($Check) { return }
+    if ($Check) { break }
   }
 
   Say ''
@@ -372,14 +394,14 @@ try {
     if ($r.update -and $r.notes) { Say "      $($r.notes)" }
   }
   $todo = @($rows | Where-Object { $_.update })
-  if (-not $todo.Count) { Say ''; Say 'Nothing to update.' 'Green'; return }
-  if ($Check) { return }
+  if (-not $todo.Count) { Say ''; Say 'Nothing to update.' 'Green'; break }
+  if ($Check) { break }
 
   if (-not $Yes) {
     Say ''
     Say 'Only program files are replaced. Chats, models, maps, the library and settings stay as they are.'
     $a = Read-Host "Update $($todo.Count) piece(s) now? [Y/n]"
-    if ($a -and $a -notmatch '^[yY]') { Say 'Nothing changed.'; return }
+    if ($a -and $a -notmatch '^[yY]') { Say 'Nothing changed.'; break }
   }
   foreach ($r in $todo) {
     Say ''
@@ -389,17 +411,19 @@ try {
   }
   Say ''
   if ($exit) { Say "Some updates failed - see above. Log: $log" 'Red' } else { Say 'All done.' 'Green' }
+} while ($false) } catch {
+  Say "ERROR: $($_.Exception.Message)" 'Red'
+  if ($Json) { [ordered]@{ error = $_.Exception.Message } | ConvertTo-Json }
+  $exit = 1
+} finally {
+  # The app that started us closed itself for the update: start it again, also when there was
+  # nothing to do or something failed (the old version is still there then).
   if ($Restart -and (Test-Path -LiteralPath $Restart)) {
     Say "Starting $(Split-Path $Restart -Leaf) again..."
     Start-Process -FilePath $Restart -WorkingDirectory (Split-Path $Restart)
   }
   # Opened by an app in its own window: keep it open if something went wrong so it can be read.
   if ($exit -and $WaitPid) { Read-Host 'Press Enter to close' | Out-Null }
-} catch {
-  Say "ERROR: $($_.Exception.Message)" 'Red'
-  if ($Json) { [ordered]@{ error = $_.Exception.Message } | ConvertTo-Json }
-  $exit = 1
-} finally {
   if (-not $Json) { try { Stop-Transcript | Out-Null } catch { } }
 }
 exit $exit

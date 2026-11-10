@@ -5,10 +5,15 @@
        own catalogs (model catalogs, maps catalog, starter packs), so they never drift apart.
     2. ISCC (Inno Setup 6) compiles installer\Suite-Setup.iss.
 
-  Archive sizes come from Get Archives --list (Kiwix, 2026-10-23); refresh $archiveGB
-  when Kiwix's files grow a lot. Sizes are decimal GB, as the wizard shows them.
+  Archive sizes: by default the figures below (Get Archives --list, Kiwix, 2026-10-23).
+  -RefreshSizes asks Kiwix for the current file of each starter-pack archive and English Wikipedia
+  and uses their real sizes instead (any it can't reach keep the figure below). Decimal GB/MB.
+
+    tools\build-installer.ps1                  build with the sizes below
+    tools\build-installer.ps1 -RefreshSizes    build with today's sizes from download.kiwix.org
+    tools\build-installer.ps1 -CatalogOnly     only write installer\catalog.ini
 #>
-param([string]$Apps = '', [switch]$CatalogOnly)
+param([string]$Apps = '', [switch]$CatalogOnly, [switch]$RefreshSizes)
 $ErrorActionPreference = 'Stop'
 $suiteDir = Split-Path $PSScriptRoot -Parent
 if (-not $Apps) { $Apps = Split-Path $suiteDir -Parent }
@@ -57,6 +62,35 @@ $archiveGB = @{ appropedia = 0.6; energypedia = 0.8; ifixit = 3.6; medlineplus =
   'se-woodworking' = 0.1; 'se-pets' = 0.087; 'se-ham' = 0.077; 'se-homebrew' = 0.037; 'se-sustainability' = 0.028
   'se-crafts' = 0.059; 'se-lifehacks' = 0.049 }
 $webGB = @{ wikipedia = 0.3; web = 0.4 }   # fetched page by page, no archive
+$wikiMB = @{ nopic = 52700; maxi = 127400 }
+
+# -RefreshSizes: today's size of each archive's newest file on Kiwix (folder and name prefix from archives.py)
+if ($RefreshSizes) {
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+  $py = Get-Content (Join-Path $Apps 'Research\_scripts\archives.py') -Raw
+  $where = @{}   # key -> folder, prefix
+  foreach ($m in [regex]::Matches($py, '"([\w-]+)":\s*\("([^"]+)",\s*"([^"]+)"')) { $where[$m.Groups[1].Value] = @($m.Groups[2].Value, $m.Groups[3].Value) }
+  $seList = [regex]::Match($py, 'SE_SITES\s*=\s*\[([^\]]+)\]').Groups[1].Value
+  foreach ($m in [regex]::Matches($seList, '"(\w+)"')) { $where["se-$($m.Groups[1].Value)"] = @('stack_exchange', "$($m.Groups[1].Value).stackexchange.com_en_all_") }
+  $listings = @{}
+  function Kiwix-Size([string]$folder, [string]$prefix) {
+    $url = "https://download.kiwix.org/zim/$folder/"
+    if (-not $listings.ContainsKey($folder)) { $listings[$folder] = (Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 60).Content }
+    $names = @([regex]::Matches($listings[$folder], 'href="(' + [regex]::Escape($prefix) + '\d{4}-\d{2}[a-z]?\.zim)"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    if (-not $names.Count) { return 0 }
+    $r = Invoke-WebRequest -Uri ($url + $names[-1]) -Method Head -UseBasicParsing -TimeoutSec 60
+    return [double]$r.Headers['Content-Length']
+  }
+  foreach ($k in @($archiveGB.Keys)) {
+    try { $b = Kiwix-Size $where[$k][0] $where[$k][1]; if ($b -gt 0) { $archiveGB[$k] = [math]::Round($b / 1e9, 3) } }
+    catch { Write-Host "  $k - could not ask Kiwix, keeping $($archiveGB[$k]) GB" -ForegroundColor Yellow }
+  }
+  foreach ($w in 'nopic', 'maxi') {
+    try { $b = Kiwix-Size 'wikipedia' "wikipedia_en_all_$($w)_"; if ($b -gt 0) { $wikiMB[$w] = [int][math]::Round($b / 1e6) } }
+    catch { Write-Host "  wikipedia $w - could not ask Kiwix, keeping $($wikiMB[$w]) MB" -ForegroundColor Yellow }
+  }
+  Write-Host "Archive sizes refreshed from Kiwix: Wikipedia text $($wikiMB.nopic) MB, with pictures $($wikiMB.maxi) MB"
+}
 $groups = [ordered]@{
   med    = @('Medical', 'MedlinePlus, WikEM, NHS Medicines', @('medlineplus', 'wikem', 'nhs'))
   fix    = @('Repair guides', 'iFixit', @('ifixit'))
@@ -80,7 +114,7 @@ foreach ($g in $groups.Keys) {
   $out.Add("title=$title"); $out.Add("desc=$desc"); $out.Add("items=$items"); $out.Add("mb=$([int][math]::Round($gb * 1000))")
   $out.Add("packs=$($keys -join ',')"); $out.Add("archives=$($arch -join ',')")
 }
-$out.Add('[wiki]'); $out.Add('nopicMB=52700'); $out.Add('maxiMB=127400')
+$out.Add('[wiki]'); $out.Add("nopicMB=$($wikiMB.nopic)"); $out.Add("maxiMB=$($wikiMB.maxi)")
 
 # ---- offline archives (AIPortable's data\wikipedia-catalog.json - the same list its Wikipedia tab offers)
 # English Wikipedia full text / with pictures are offered separately ([wiki]); the condensed ("mini")

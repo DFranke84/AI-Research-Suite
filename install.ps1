@@ -247,9 +247,10 @@ if ($viewer) {
 Add-Step 'Save settings and check everything' {
   $sp = Join-Path $suiteDir 'settings.json'
   $s = @{}
-  if (Test-Path $sp) { (Get-Content $sp -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $s[$_.Name] = $_.Value } }
+  if (Test-Path $sp) { (Get-Content $sp -Raw -Encoding UTF8 | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $s[$_.Name] = $_.Value } }
   $s['weeklyCheck'] = Flag $p['weekly']
-  $s | ConvertTo-Json | Set-Content -Path $sp -Encoding ASCII
+  # UTF-8 without a BOM (the apps read it too); ASCII would turn an accented folder name in "source" into '?'
+  [IO.File]::WriteAllText($sp, ($s | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
   foreach ($n in $pieces) {
     if (-not (Test-Path (Join-Path $root "$n\release-manifest.json"))) { throw "$n is not installed" }
   }
